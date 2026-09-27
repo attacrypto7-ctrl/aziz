@@ -145,8 +145,8 @@ async function main() {
     defaultPort = 3002;
   }
 
-  const port = parseInt(process.env.WA_GATEWAY_PORT || String(defaultPort), 10);
-  app.listen(port, () => console.log(`[wa-gateway] listening on ${port}`));
+  const port = parseInt(process.env.PORT || process.env.WA_GATEWAY_PORT || String(defaultPort), 10);
+  app.listen(port, "0.0.0.0", () => console.log(`[wa-gateway] listening on ${port} (0.0.0.0)`));
 }
 
 main().catch((err) => {

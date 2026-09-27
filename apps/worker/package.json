@@ -1,7 +1,7 @@
 {
   "name": "cs-ai-worker",
-  "version": "1.0.0",
-  "description": "Worker service (BullMQ) \u2014 balas chat via Groq+RAG, balas iklan via template, indexing dokumen",
+  "version": "1.0.1",
+  "description": "Worker service (BullMQ) — balas chat via Groq+RAG, balas iklan via template, indexing dokumen",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",

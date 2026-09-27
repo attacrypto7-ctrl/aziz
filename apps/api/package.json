@@ -1,7 +1,7 @@
 {
   "name": "cs-ai-api",
-  "version": "1.0.0",
-  "description": "API service (NestJS) \u2014 REST API for Balasin CS AI dashboard",
+  "version": "1.0.1",
+  "description": "API service (NestJS) — REST API for Balasin CS AI dashboard",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",

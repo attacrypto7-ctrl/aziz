@@ -1,7 +1,7 @@
 {
   "name": "cs-ai-wa-gateway",
-  "version": "1.0.0",
-  "description": "WA Gateway service (Baileys) \u2014 kelola koneksi WhatsApp multi-tenant, QR, kirim/terima pesan",
+  "version": "1.0.1",
+  "description": "WA Gateway service (Baileys) — kelola koneksi WhatsApp multi-tenant, QR, kirim/terima pesan",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {

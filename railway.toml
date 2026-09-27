@@ -6,11 +6,8 @@
 
 [build]
 builder = "nixpacks"
-buildCommand = "npm install && npm run build:libs && npm run build -w cs-ai-api"
+buildCommand = "npm install && npm run build"
 
 [deploy]
-startCommand = "npm run start:api"
-healthcheckPath = "/api"
-healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

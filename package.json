@@ -7,6 +7,9 @@
     "libs/*",
     "apps/*"
   ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build:libs": "npm run build -w @cs-ai/shared-types && npm run build -w @cs-ai/groq-client && npm run build -w @cs-ai/database",
     "build": "npm run build:libs && npm run build -w cs-ai-api && npm run build -w cs-ai-worker && npm run build -w cs-ai-wa-gateway",

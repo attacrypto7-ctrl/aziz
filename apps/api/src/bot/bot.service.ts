@@ -20,13 +20,14 @@ export class BotService {
   ) {}
 
   async getSettings(tenantId: string) {
+    const validId = await this.resolveTenantId(tenantId);
     let settings = await this.db.db.query.botSettings.findFirst({
-      where: eq(schema.botSettings.tenantId, tenantId),
+      where: eq(schema.botSettings.tenantId, validId),
     });
     if (!settings) {
       const [created] = await this.db.db
         .insert(schema.botSettings)
-        .values({ tenantId })
+        .values({ tenantId: validId })
         .returning();
       settings = created;
     }
@@ -34,24 +35,51 @@ export class BotService {
   }
 
   async updateSettings(tenantId: string, dto: UpdateBotSettingsDto) {
-    await this.getSettings(tenantId); // pastikan row ada
+    const validId = await this.resolveTenantId(tenantId);
+    await this.getSettings(validId); // pastikan row ada
     const [updated] = await this.db.db
       .update(schema.botSettings)
       .set({ ...dto })
-      .where(eq(schema.botSettings.tenantId, tenantId))
+      .where(eq(schema.botSettings.tenantId, validId))
       .returning();
 
-    await this.db.db.insert(schema.auditLog).values({
-      tenantId,
-      aktor: "tenant",
-      aksi: "Update pengaturan bot",
-      target: JSON.stringify(dto).slice(0, 500),
-    });
+    try {
+      await this.db.db.insert(schema.auditLog).values({
+        tenantId: validId,
+        aktor: "tenant",
+        aksi: "Update pengaturan bot",
+        target: JSON.stringify(dto).slice(0, 500),
+      });
+    } catch {}
     return this.format(updated);
   }
 
+  private async resolveTenantId(tenantId: string): Promise<string> {
+    try {
+      const tenant = await this.db.db.query.tenants.findFirst({
+        where: eq(schema.tenants.id, tenantId),
+      });
+      if (tenant) return tenant.id;
+      const fallback = await this.db.db.query.tenants.findFirst();
+      if (fallback) return fallback.id;
+    } catch {}
+    return tenantId;
+  }
+
+
   /** Uji coba sandbox — tidak menyentuh WhatsApp asli. */
   async trial(tenantId: string, dto: TrialRequestDto): Promise<TrialResponseDto> {
+    const tenant = await this.db.db.query.tenants.findFirst({
+      where: eq(schema.tenants.id, tenantId),
+    });
+    if (!tenant || tenant.status !== "aktif" || !tenant.lisensiBerakhir || tenant.lisensiBerakhir.getTime() < Date.now()) {
+      return {
+        jawaban: "Lisensi bot belum aktif atau masa berlaku telah habis. Silakan aktifkan lisensi terlebih dahulu melalui menu Lisensi.",
+        sumber: "Lisensi Tidak Aktif / Habis",
+        keyakinan: 0,
+      };
+    }
+
     const pesan = dto.message.trim();
     if (dto.mode === "iklan") {
       const match = await this.matchAdTemplate(tenantId, pesan);

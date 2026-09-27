@@ -44,11 +44,22 @@ const internalHeaders = () => ({
 
 /** Laporkan hasil balasan ke api (disimpan + diantrekan ke wa-gateway). */
 export async function reportReply(data: {
-  tenantId: string; waNumberId: string; nomor: string; kontak?: string;
-  pesanAsli: string; balasan: string; keyakinan: number; status: string; kanal: "Chat" | "Iklan";
+  tenantId: string;
+  waNumberId: string;
+  nomor: string;
+  kontak?: string;
+  pesanAsli: string;
+  balasan: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
+  keyakinan: number;
+  status: string;
+  kanal: "Chat" | "Iklan";
 }): Promise<void> {
   await fetch(`${internalBase()}/internal/reply-result`, {
-    method: "POST", headers: internalHeaders(), body: JSON.stringify(data),
+    method: "POST",
+    headers: internalHeaders(),
+    body: JSON.stringify(data),
   });
 }
 

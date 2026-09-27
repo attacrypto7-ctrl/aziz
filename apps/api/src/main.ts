@@ -16,8 +16,23 @@ process.on("unhandledRejection", (reason: any) => {
   }
 });
 
+import path from "path";
+import fs from "fs";
+import express from "express";
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Serve uploads folder statically
+  const uploadsDir = path.resolve(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  const mediaDir = path.resolve(uploadsDir, "ad-media");
+  if (!fs.existsSync(mediaDir)) {
+    fs.mkdirSync(mediaDir, { recursive: true });
+  }
+  app.use("/uploads", express.static(uploadsDir));
 
   // CORS — di produksi hanya izinkan FRONTEND_URL, di dev terima semua
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:8080";

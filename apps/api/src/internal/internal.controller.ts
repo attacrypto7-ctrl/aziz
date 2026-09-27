@@ -34,10 +34,10 @@ export class InternalController {
   @Public()
   waStatus(
     @Headers("x-internal-secret") secret: string,
-    @Body() body: { waNumberId: string; status: string },
+    @Body() body: { waNumberId: string; status: string; nomor?: string },
   ) {
     this.internal.checkSecret(secret);
-    return this.internal.waStatus(body.waNumberId, body.status);
+    return this.internal.waStatus(body.waNumberId, body.status, body.nomor);
   }
 
   @Post("usage")

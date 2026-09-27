@@ -71,33 +71,44 @@ export class AdminService {
     return rows.map((t) => this.formatTenant(t));
   }
 
-  // ---- Licenses ----
-  async createLicense(data: { tenantId: string; plan: string; kuotaChat: number; berakhir: string }) {
-    const tenant = await this.db.db.query.tenants.findFirst({
-      where: eq(schema.tenants.id, data.tenantId),
-    });
-    if (!tenant) throw new NotFoundException(`Tenant ${data.tenantId} tidak ditemukan`);
+  async createLicense(data: { tenantId?: string; plan: string; kuotaChat?: number; berakhir: string }) {
+    const cleanTenantId =
+      data.tenantId && data.tenantId !== "unassigned" && data.tenantId !== "none" && data.tenantId.trim() !== ""
+        ? data.tenantId.trim()
+        : null;
+
+    let tenantNama = "Belum Diklaim (Siap Pakai)";
+    if (cleanTenantId) {
+      try {
+        const tenant = await this.db.db.query.tenants.findFirst({
+          where: eq(schema.tenants.id, cleanTenantId),
+        });
+        if (tenant) tenantNama = tenant.nama;
+      } catch {
+        tenantNama = "Belum Diklaim (Siap Pakai)";
+      }
+    }
 
     const kode = generateLicenseCode();
     const [row] = await this.db.db
       .insert(schema.licenses)
       .values({
         kode,
-        tenantId: data.tenantId,
+        tenantId: cleanTenantId,
         plan: data.plan as any,
         status: "nonaktif",
         berakhir: new Date(data.berakhir),
-        kuotaChat: Number(data.kuotaChat) || 3000,
+        kuotaChat: Number(data.kuotaChat) || 999999,
       })
       .returning();
 
     await this.db.db.insert(schema.auditLog).values({
-      tenantId: data.tenantId,
+      tenantId: cleanTenantId,
       aktor: "admin",
-      aksi: "Buat lisensi",
-      target: kode,
+      aksi: "Buat kode lisensi",
+      target: `${kode} (${data.plan}, Exp: ${data.berakhir})`,
     });
-    return this.formatLicense({ ...row, tenants: tenant });
+    return this.formatLicense({ ...row, tenantNama });
   }
 
   async revokeLicense(id: string) {
@@ -119,17 +130,50 @@ export class AdminService {
     return this.formatLicense(row);
   }
 
+  async deleteLicense(id: string) {
+    const license = await this.db.db.query.licenses.findFirst({
+      where: eq(schema.licenses.id, id),
+    });
+    if (!license) throw new NotFoundException(`License ${id} tidak ditemukan`);
+    await this.db.db
+      .delete(schema.licenses)
+      .where(eq(schema.licenses.id, id));
+    await this.db.db.insert(schema.auditLog).values({
+      tenantId: license.tenantId,
+      aktor: "admin",
+      aksi: "Hapus lisensi",
+      target: license.kode,
+    });
+    return { ok: true };
+  }
+
   async getAllLicenses(tenantId?: string) {
     const conditions: any[] = [];
     if (tenantId) conditions.push(eq(schema.licenses.tenantId, tenantId));
 
     const rows = await this.db.db
-      .select()
+      .select({
+        id: schema.licenses.id,
+        kode: schema.licenses.kode,
+        tenantId: schema.licenses.tenantId,
+        tenantNama: schema.tenants.nama,
+        plan: schema.licenses.plan,
+        status: schema.licenses.status,
+        dibuat: schema.licenses.dibuat,
+        berakhir: schema.licenses.berakhir,
+        kuotaChat: schema.licenses.kuotaChat,
+      })
       .from(schema.licenses)
+      .leftJoin(schema.tenants, eq(schema.licenses.tenantId, schema.tenants.id))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(schema.licenses.createdAt));
 
-    return rows.map((l) => this.formatLicense(l));
+    return rows.map((l) =>
+      this.formatLicense({
+        ...l,
+        tenantNama: l.tenantNama ?? (l.status === "aktif" ? "Pengguna Aktif" : "Belum Diklaim (Siap Pakai)"),
+      }),
+    );
   }
 
   async getLicense(id: string) {

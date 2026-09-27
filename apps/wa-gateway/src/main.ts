@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(process.cwd(), "../.env") });
 import express from "express";
 import { Worker } from "bullmq";
 import { Redis as IORedis } from "ioredis";
-import { connect, disconnect, getQr, sendText } from "./sessions.js";
+import { connect, disconnect, getQr, getQrWithWait, sendText, sendMediaOrText } from "./sessions.js";
 
 process.on("unhandledRejection", (reason: any) => {
   if (reason?.code === "ECONNREFUSED" || reason?.message?.includes("ECONNREFUSED") || reason?.name === "AggregateError") return;
@@ -37,9 +37,9 @@ async function main() {
   app.get("/health", (_req, res) => res.json({ ok: true, service: "wa-gateway" }));
 
   app.get("/wa/:id/qr", async (req, res) => {
-    // Pastikan sesi berjalan supaya QR tersedia
-    await connect(req.params.id).catch(() => undefined);
-    res.json(getQr(req.params.id));
+    // Tunggu sebentar hingga QR pertama siap
+    const data = await getQrWithWait(req.params.id, 4500);
+    res.json(data);
   });
 
   app.post("/wa/:id/connect", async (req, res) => {
@@ -94,11 +94,16 @@ async function main() {
   const outgoingWorker = new Worker(
     "outgoing",
     async (job) => {
-      const { waNumberId, nomor, pesan } = job.data as {
-        waNumberId: string; nomor: string; pesan: string;
+      const data = job.data as {
+        waNumberId: string;
+        nomor: string;
+        pesan?: string;
+        mediaUrl?: string;
+        mediaType?: "image" | "video";
+        caption?: string;
       };
-      await sendText(waNumberId, nomor, pesan);
-      console.log(`[wa] terkirim → ${nomor} (${waNumberId})`);
+      await sendMediaOrText(data.waNumberId, data.nomor, data);
+      console.log(`[wa] terkirim → ${data.nomor} (${data.waNumberId})`);
     },
     { connection, concurrency: 10 },
   );
@@ -131,7 +136,18 @@ async function main() {
     });
   }
 
-  const port = parseInt(process.env.PORT ?? "3002", 10);
+  const rawGatewayUrl = process.env.WA_GATEWAY_URL || "";
+  let defaultPort = 3002;
+  try {
+    if (rawGatewayUrl) {
+      const parsed = new URL(rawGatewayUrl);
+      if (parsed.port) defaultPort = parseInt(parsed.port, 10);
+    }
+  } catch {
+    defaultPort = 3002;
+  }
+
+  const port = parseInt(process.env.WA_GATEWAY_PORT || String(defaultPort), 10);
   app.listen(port, () => console.log(`[wa-gateway] listening on ${port}`));
 }
 

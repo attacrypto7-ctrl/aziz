@@ -12,8 +12,18 @@ export class WhatsappController {
     return this.wa.list(tenantId);
   }
 
+  @Get("primary")
+  getPrimary(@Tenant("tenantId") tenantId: string) {
+    return this.wa.getOrCreatePrimary(tenantId);
+  }
+
+  @Get("qr")
+  getQrDirect(@Tenant("tenantId") tenantId: string) {
+    return this.wa.getQr(tenantId);
+  }
+
   @Post("numbers")
-  create(@Tenant("tenantId") tenantId: string, @Body() dto: { label: string; nomor: string }) {
+  create(@Tenant("tenantId") tenantId: string, @Body() dto: { label?: string; nomor?: string }) {
     return this.wa.create(tenantId, dto);
   }
 

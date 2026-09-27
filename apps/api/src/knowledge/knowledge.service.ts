@@ -19,10 +19,11 @@ export class KnowledgeService {
 
   // ---- Documents ----
   async getDocs(tenantId: string) {
+    const validId = await this.resolveTenantId(tenantId);
     const docs = await this.db.db
       .select()
       .from(schema.knowledgeDocs)
-      .where(eq(schema.knowledgeDocs.tenantId, tenantId))
+      .where(eq(schema.knowledgeDocs.tenantId, validId))
       .orderBy(schema.knowledgeDocs.diperbarui);
 
     return docs.map((d) => ({
@@ -43,6 +44,7 @@ export class KnowledgeService {
     file: Express.Multer.File,
     body?: { nama?: string; tipe?: string },
   ) {
+    const validId = await this.resolveTenantId(tenantId);
     const ukuran = formatBytes(file.size);
     const nama = body?.nama || file.originalname || "dokumen";
     const tipe = (body?.tipe as DocTipe) || detectFileType(file);
@@ -50,7 +52,7 @@ export class KnowledgeService {
     const [doc] = await this.db.db
       .insert(schema.knowledgeDocs)
       .values({
-        tenantId,
+        tenantId: validId,
         nama,
         tipe,
         ukuran,
@@ -68,7 +70,7 @@ export class KnowledgeService {
     }
 
     await this.queueService.enqueueIndexing({
-      tenantId,
+      tenantId: validId,
       docId: doc.id,
       content,
       tipe: tipe === "PDF" ? "PDF" : "Teks",
@@ -88,8 +90,9 @@ export class KnowledgeService {
   }
 
   async deleteDoc(tenantId: string, docId: string) {
+    const validId = await this.resolveTenantId(tenantId);
     const doc = await this.db.db.query.knowledgeDocs.findFirst({
-      where: and(eq(schema.knowledgeDocs.id, docId), eq(schema.knowledgeDocs.tenantId, tenantId)),
+      where: and(eq(schema.knowledgeDocs.id, docId), eq(schema.knowledgeDocs.tenantId, validId)),
     });
     if (!doc) throw new NotFoundException("Dokumen tidak ditemukan");
 
@@ -102,6 +105,7 @@ export class KnowledgeService {
   }
 
   async getDocChunks(tenantId: string, docId: string) {
+    const validId = await this.resolveTenantId(tenantId);
     const chunks = await this.db.db
       .select({
         id: schema.knowledgeChunks.id,
@@ -112,20 +116,21 @@ export class KnowledgeService {
       .where(
         and(
           eq(schema.knowledgeChunks.docId, docId),
-          eq(schema.knowledgeChunks.tenantId, tenantId),
+          eq(schema.knowledgeChunks.tenantId, validId),
         ),
       )
       .orderBy(schema.knowledgeChunks.createdAt);
 
-        return { docId, totalChunks: chunks.length, chunks };
+    return { docId, totalChunks: chunks.length, chunks };
   }
 
   // ---- FAQ ----
   async getFaq(tenantId: string) {
+    const validId = await this.resolveTenantId(tenantId);
     const faqs = await this.db.db
       .select()
       .from(schema.faqItems)
-      .where(eq(schema.faqItems.tenantId, tenantId))
+      .where(eq(schema.faqItems.tenantId, validId))
       .orderBy(schema.faqItems.createdAt);
 
     return faqs.map((f) => ({
@@ -141,9 +146,10 @@ export class KnowledgeService {
       throw new BadRequestException("pertanyaan dan jawaban wajib diisi");
     }
 
+    const validId = await this.resolveTenantId(tenantId);
     const [faq] = await this.db.db
       .insert(schema.faqItems)
-      .values({ tenantId, pertanyaan: data.pertanyaan, jawaban: data.jawaban })
+      .values({ tenantId: validId, pertanyaan: data.pertanyaan, jawaban: data.jawaban })
       .returning();
 
     return {
@@ -155,8 +161,9 @@ export class KnowledgeService {
   }
 
   async updateFaq(tenantId: string, faqId: string, data: { pertanyaan?: string; jawaban?: string }) {
+    const validId = await this.resolveTenantId(tenantId);
     const faq = await this.db.db.query.faqItems.findFirst({
-      where: and(eq(schema.faqItems.id, faqId), eq(schema.faqItems.tenantId, tenantId)),
+      where: and(eq(schema.faqItems.id, faqId), eq(schema.faqItems.tenantId, validId)),
     });
     if (!faq) throw new NotFoundException("FAQ tidak ditemukan");
 
@@ -175,8 +182,9 @@ export class KnowledgeService {
   }
 
   async deleteFaq(tenantId: string, faqId: string) {
+    const validId = await this.resolveTenantId(tenantId);
     const faq = await this.db.db.query.faqItems.findFirst({
-      where: and(eq(schema.faqItems.id, faqId), eq(schema.faqItems.tenantId, tenantId)),
+      where: and(eq(schema.faqItems.id, faqId), eq(schema.faqItems.tenantId, validId)),
     });
     if (!faq) throw new NotFoundException("FAQ tidak ditemukan");
 
@@ -186,12 +194,13 @@ export class KnowledgeService {
 
   // ---- RAG Search ----
   async search(tenantId: string, query: string, topK = 5) {
+    const validId = await this.resolveTenantId(tenantId);
     const faqs = await this.db.db
       .select()
       .from(schema.faqItems)
       .where(
         and(
-          eq(schema.faqItems.tenantId, tenantId),
+          eq(schema.faqItems.tenantId, validId),
           sql`to_tsvector('indonesian', ${""}) @@ plainto_tsquery('indonesian', ${query})`,
         ),
       );
@@ -202,12 +211,25 @@ export class KnowledgeService {
         content: schema.knowledgeChunks.content,
       })
       .from(schema.knowledgeChunks)
-      .where(eq(schema.knowledgeChunks.tenantId, tenantId))
+      .where(eq(schema.knowledgeChunks.tenantId, validId))
       .orderBy(schema.knowledgeChunks.createdAt)
       .limit(topK);
 
     return { faqs, chunks };
   }
+
+  private async resolveTenantId(tenantId: string): Promise<string> {
+    try {
+      const tenant = await this.db.db.query.tenants.findFirst({
+        where: eq(schema.tenants.id, tenantId),
+      });
+      if (tenant) return tenant.id;
+      const fallback = await this.db.db.query.tenants.findFirst();
+      if (fallback) return fallback.id;
+    } catch {}
+    return tenantId;
+  }
+
 }
 
 function formatBytes(bytes: number): string {

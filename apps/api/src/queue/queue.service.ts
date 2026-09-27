@@ -153,7 +153,10 @@ export interface OutgoingMessageData {
   tenantId: string;
   waNumberId: string;
   nomor: string;
-  pesan: string;
+  pesan?: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
+  caption?: string;
 }
 
 export interface IndexingData {

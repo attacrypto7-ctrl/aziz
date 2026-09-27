@@ -14,7 +14,7 @@ export type ChatStatus = "terjawab" | "perlu_manusia" | "diambil_alih";
 export type DocTipe = "PDF" | "Teks" | "FAQ Manual";
 export type DocStatus = "terindeks" | "memproses" | "gagal";
 export type CaraCocokkan = "sama_persis" | "boleh_mirip";
-export type StepTipe = "teks" | "gambar";
+export type StepTipe = "teks" | "gambar" | "video";
 export type MessageDirection = "in" | "out";
 
 // ---- Interfaces ----
@@ -77,13 +77,17 @@ export interface FaqItem {
 }
 
 export interface AdTemplateStep {
-  id: string;
+  id?: string;
   templateId?: string;
   urutan: number;
   tipe: StepTipe;
   isiTeks?: string;
   urlGambar?: string;
   namaGambar?: string;
+  urlVideo?: string;
+  namaVideo?: string;
+  urlMedia?: string;
+  namaMedia?: string;
 }
 
 export interface AdTemplate {
@@ -247,7 +251,10 @@ export interface OutgoingMessageDto {
   tenantId: string;
   waNumberId: string;
   nomor: string;
-  pesan: string;
+  pesan?: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
+  caption?: string;
 }
 
 export interface KnowledgeChunk {

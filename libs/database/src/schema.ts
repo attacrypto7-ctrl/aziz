@@ -36,12 +36,12 @@ export const tenants = pgTable("tenants", {
 export const licenses = pgTable("licenses", {
   id: uuid().primaryKey().defaultRandom(),
   kode: varchar({ length: 32 }).notNull().unique(),
-  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   plan: varchar({ length: 16 }).notNull(),
   status: varchar({ length: 16 }).notNull().default("nonaktif"),
   dibuat: timestamp({ withTimezone: true }).notNull().defaultNow(),
   berakhir: timestamp({ withTimezone: true }).notNull(),
-  kuotaChat: integer("kuota_chat").notNull(),
+  kuotaChat: integer("kuota_chat").notNull().default(999999),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

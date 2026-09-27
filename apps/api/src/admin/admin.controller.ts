@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -50,7 +51,7 @@ export class AdminController {
   // ---- Licenses ----
   @Post("licenses")
   createLicense(
-    @Body() body: { tenantId: string; plan: string; kuotaChat: number; berakhir: string },
+    @Body() body: { tenantId?: string; plan: string; kuotaChat?: number; berakhir: string },
   ) {
     return this.adminService.createLicense(body);
   }
@@ -58,6 +59,11 @@ export class AdminController {
   @Post("licenses/:id/revoke")
   revokeLicense(@Param("id") id: string) {
     return this.adminService.revokeLicense(id);
+  }
+
+  @Delete("licenses/:id")
+  deleteLicense(@Param("id") id: string) {
+    return this.adminService.deleteLicense(id);
   }
 
   @Get("licenses")

@@ -8,17 +8,27 @@ export class LicenseController {
   constructor(private readonly license: LicenseService) {}
 
   @Get("me")
-  myLicenses(@Tenant("tenantId") tenantId: string) {
-    return this.license.myLicenses(tenantId);
+  myLicenses(
+    @Tenant("tenantId") tenantId: string,
+    @Tenant("email") email: string,
+  ) {
+    return this.license.myLicenses(tenantId, email);
   }
 
   @Get("status")
-  status(@Tenant("tenantId") tenantId: string) {
-    return this.license.status(tenantId);
+  status(
+    @Tenant("tenantId") tenantId: string,
+    @Tenant("email") email: string,
+  ) {
+    return this.license.status(tenantId, email);
   }
 
   @Post("activate")
-  activate(@Tenant("tenantId") tenantId: string, @Body() body: { kode: string }) {
-    return this.license.activate(tenantId, body.kode);
+  activate(
+    @Tenant("tenantId") tenantId: string,
+    @Tenant("email") email: string,
+    @Body() body: { kode: string },
+  ) {
+    return this.license.activate(tenantId, body.kode, email);
   }
 }

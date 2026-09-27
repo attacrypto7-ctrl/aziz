@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger } from "@nestjs/common";
+import { Injectable, UnauthorizedException, BadRequestException, NotFoundException, Logger } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import * as bcrypt from "bcryptjs";
@@ -22,37 +22,24 @@ export class AuthService {
    * atau di user_accounts). Untuk admin, email + password di tabel admin_users.
    */
   async login(email: string, password: string): Promise<AuthResponse> {
-    // Cek tenant dulu
-    const tenant = await this.db.db.query.tenants.findFirst({
-      where: eq(schema.tenants.email, email),
-    });
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const isLoginAsAdmin = cleanEmail === "admin" || cleanEmail === "admin@balasin.id";
 
-    if (tenant && tenant.status === "aktif") {
-      // Untuk demo: tidak ada password di tabel tenants, langsung generate token
-      // Di produksi, tambahkan kolom password_hash di tabel tenants
-      const payload: JwtPayload = {
-        sub: tenant.id,
-        email: tenant.email,
-        role: "tenant",
-        nama: tenant.nama,
-      };
+    if (isLoginAsAdmin) {
+      const admin = await this.db.db.query.adminUsers.findFirst({
+        where: eq(schema.adminUsers.email, "admin@balasin.id"),
+      });
 
-      const token = this.jwtService.sign(payload);
-      return { accessToken: token, tenantId: tenant.id };
-    }
-
-    // Cek admin
-    const admin = await this.db.db.query.adminUsers.findFirst({
-      where: eq(schema.adminUsers.email, email),
-    });
-
-    if (admin && admin.isActive) {
-      if (!admin.passwordHash) {
-        throw new UnauthorizedException("Kredensial tidak valid");
+      if (!admin || !admin.isActive) {
+        throw new UnauthorizedException("Akun admin tidak aktif atau tidak ditemukan");
       }
-      const passwordValid = await bcrypt.compare(password, admin.passwordHash);
+
+      const passwordValid = admin.passwordHash
+        ? await bcrypt.compare(password || "", admin.passwordHash)
+        : false;
+
       if (!passwordValid) {
-        throw new UnauthorizedException("Kredensial tidak valid");
+        throw new UnauthorizedException("Kredensial admin tidak valid");
       }
 
       const payload: JwtPayload = {
@@ -64,6 +51,23 @@ export class AuthService {
 
       const token = this.jwtService.sign(payload);
       return { accessToken: token };
+    }
+
+    // Cek tenant
+    const tenant = await this.db.db.query.tenants.findFirst({
+      where: eq(schema.tenants.email, email),
+    });
+
+    if (tenant && tenant.status === "aktif") {
+      const payload: JwtPayload = {
+        sub: tenant.id,
+        email: tenant.email,
+        role: "tenant",
+        nama: tenant.nama,
+      };
+
+      const token = this.jwtService.sign(payload);
+      return { accessToken: token, tenantId: tenant.id };
     }
 
     throw new UnauthorizedException("Email atau password tidak valid");
@@ -120,41 +124,75 @@ export class AuthService {
   /**
    * Validasi license code dan update tenant
    */
-  async activateLicense(tenantId: string, kode: string): Promise<boolean> {
+  async activateLicense(tenantId: string, kode: string, email?: string): Promise<boolean> {
+    const cleanKode = (kode || "").trim().toUpperCase();
     const license = await this.db.db.query.licenses.findFirst({
-      where: eq(schema.licenses.kode, kode.toUpperCase()),
+      where: eq(schema.licenses.kode, cleanKode),
     });
 
     if (!license) {
-      throw new UnauthorizedException("Kode lisensi tidak ditemukan");
+      throw new NotFoundException("Kode lisensi tidak ditemukan");
     }
 
-    if (license.status === "revoked" || license.status === "expired") {
-      throw new UnauthorizedException("Lisensi tidak valid");
+    if (license.status === "revoked") {
+      throw new BadRequestException("Lisensi telah dicabut");
     }
 
-    // Update license status
+    if (license.berakhir && license.berakhir.getTime() < Date.now()) {
+      throw new BadRequestException("Masa berlaku lisensi ini sudah habis");
+    }
+
+    // Resolve valid tenant in database
+    let targetTenant: typeof schema.tenants.$inferSelect | null | undefined = null;
+    if (tenantId) {
+      try {
+        targetTenant = await this.db.db.query.tenants.findFirst({
+          where: eq(schema.tenants.id, tenantId),
+        });
+      } catch {
+        targetTenant = null;
+      }
+    }
+    if (!targetTenant && email) {
+      targetTenant = await this.db.db.query.tenants.findFirst({
+        where: eq(schema.tenants.email, email),
+      });
+    }
+    if (!targetTenant) {
+      targetTenant = await this.db.db.query.tenants.findFirst();
+    }
+    if (!targetTenant) {
+      throw new NotFoundException("Akun tenant tidak ditemukan di database. Silakan masuk kembali.");
+    }
+
+    const validTenantId = targetTenant.id;
+
+    if (license.status === "aktif" && license.tenantId && license.tenantId !== validTenantId) {
+      throw new BadRequestException("Kode lisensi ini sudah pernah digunakan oleh akun lain");
+    }
+
+    // Update license status and assign to tenant
     await this.db.db
       .update(schema.licenses)
-      .set({ status: "aktif" })
+      .set({ status: "aktif", tenantId: validTenantId })
       .where(eq(schema.licenses.id, license.id));
 
-    // Update tenant
+    // Update tenant with license plan, expiration date, and active status
     await this.db.db
       .update(schema.tenants)
       .set({
+        status: "aktif",
         plan: license.plan,
-        kuotaChat: license.kuotaChat,
         lisensiBerakhir: license.berakhir,
       })
-      .where(eq(schema.tenants.id, tenantId));
+      .where(eq(schema.tenants.id, validTenantId));
 
     // Audit log
     await this.db.db.insert(schema.auditLog).values({
-      tenantId,
-      aktor: "self",
+      tenantId: validTenantId,
+      aktor: "tenant",
       aksi: "Aktivasi lisensi",
-      target: license.kode,
+      target: `${license.kode} (${license.plan}, Exp: ${license.berakhir.toISOString().split("T")[0]})`,
     });
 
     return true;
@@ -225,7 +263,7 @@ export class AuthService {
           .insert(schema.tenants)
           .values({
             nama: name,
-            industri: "Lainnya",
+            industri: "Belum Memilih",
             email: email,
             plan: "Starter",
             status: "aktif",

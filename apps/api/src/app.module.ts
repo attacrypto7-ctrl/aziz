@@ -14,6 +14,7 @@ import { AdTemplateModule } from "./ad-templates/ad-template.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { LicenseModule } from "./license/license.module";
 import { InternalModule } from "./internal/internal.module";
+import { TenantModule } from "./tenant/tenant.module";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 
@@ -35,6 +36,7 @@ import { AppService } from "./app.service";
     AnalyticsModule,
     LicenseModule,
     InternalModule,
+    TenantModule,
   ],
   controllers: [AppController],
   providers: [AppService],

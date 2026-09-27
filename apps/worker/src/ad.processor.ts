@@ -18,32 +18,48 @@ export async function processAd(job: ChatJob): Promise<void> {
     .from(schema.adTemplates)
     .where(eq(schema.adTemplates.tenantId, tenantId));
   const aktif = templates.filter((t) => t.aktif);
-  const teks = pesan.toLowerCase().trim();
-  const kata = teks.split(/\s+/).filter((w) => w.length > 3);
+  const AD_STOPWORDS = new Set([
+    "halo", "hai", "selamat", "pagi", "siang", "sore", "malam",
+    "kak", "kakak", "min", "admin", "gan", "sis", "boss", "bapak", "ibu",
+    "saya", "kami", "anda", "kamu", "dia", "mereka", "kita",
+    "mau", "bisa", "apakah", "tanya", "toko", "ada", "yang", "dan", "atau",
+    "ini", "itu", "dari", "untuk", "pada", "ke", "di", "dengan", "dong", "ya"
+  ]);
 
-  // 1a. sama persis
+  const teks = pesan.toLowerCase().trim();
+  const kata = teks
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !AD_STOPWORDS.has(w));
+
+  // 1a. sama persis (abaikan tanda baca)
   let hit = aktif.find(
-    (t) => t.caraMencocokkan === "sama_persis" && t.pertanyaan.toLowerCase().trim() === teks,
+    (t) =>
+      t.caraMencocokkan === "sama_persis" &&
+      t.pertanyaan.toLowerCase().replace(/[^\w\s]/g, " ").trim() ===
+        teks.replace(/[^\w\s]/g, " ").trim(),
   );
   let keyakinan = 1;
 
-  // 1b. boleh mirip (fuzzy kata kunci — ganti fuse.js bila perlu skor lebih baik)
+  // 1b. boleh mirip: bandingkan token substantif yang bermakna
   if (!hit) {
     hit = aktif.find((t) => {
       if (t.caraMencocokkan !== "boleh_mirip") return false;
-      const target = t.pertanyaan.toLowerCase();
-      return kata.some((w) => target.includes(w));
+      const targetTokens = t.pertanyaan
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 3 && !AD_STOPWORDS.has(w));
+      if (!targetTokens.length || !kata.length) return false;
+      const sharedTokens = kata.filter((w) => targetTokens.includes(w));
+      return sharedTokens.length >= 1 && (sharedTokens.length / targetTokens.length >= 0.3 || sharedTokens.length >= 2);
     });
     keyakinan = 0.88;
   }
 
   if (hit) {
-    const balasan = await stepsText(hit.id, hit.pertanyaan);
+    await sendSteps(hit.id, hit.pertanyaan, job, keyakinan);
     await bumpDipakai(hit.id, hit.dipakai ?? 0);
-    await reportReply({
-      tenantId: job.tenantId, waNumberId: job.waNumberId, nomor: job.nomor, kontak: job.kontak,
-      pesanAsli: pesan, balasan, keyakinan, status: "terjawab", kanal: "Iklan",
-    });
     return;
   }
 
@@ -70,12 +86,8 @@ export async function processAd(job: ChatJob): Promise<void> {
     const m = (res.content ?? "").match(/ID:([0-9a-f-]{8,})/i);
     const chosen = m ? aktif.find((t) => t.id === m[1]) : undefined;
     if (chosen) {
-      const balasan = await stepsText(chosen.id, chosen.pertanyaan);
+      await sendSteps(chosen.id, chosen.pertanyaan, job, 0.7);
       await bumpDipakai(chosen.id, chosen.dipakai ?? 0);
-      await reportReply({
-        tenantId: job.tenantId, waNumberId: job.waNumberId, nomor: job.nomor, kontak: job.kontak,
-        pesanAsli: pesan, balasan, keyakinan: 0.7, status: "terjawab", kanal: "Iklan",
-      });
       return;
     }
   }
@@ -88,17 +100,47 @@ export async function processAd(job: ChatJob): Promise<void> {
   });
 }
 
-async function stepsText(templateId: string, fallback: string): Promise<string> {
+async function sendSteps(templateId: string, fallback: string, job: ChatJob, keyakinan: number): Promise<void> {
   const steps = await db()
     .select()
     .from(schema.adTemplateSteps)
     .where(eq(schema.adTemplateSteps.templateId, templateId));
-  const teks = steps
-    .sort((a, b) => a.urutan - b.urutan)
-    .filter((s) => s.tipe === "teks" && s.isiTeks)
-    .map((s) => s.isiTeks as string)
-    .join("\n");
-  return teks || fallback;
+
+  const sorted = steps.sort((a, b) => a.urutan - b.urutan);
+  if (!sorted.length) {
+    await reportReply({
+      tenantId: job.tenantId, waNumberId: job.waNumberId, nomor: job.nomor, kontak: job.kontak,
+      pesanAsli: job.pesan, balasan: fallback, keyakinan, status: "terjawab", kanal: "Iklan",
+    });
+    return;
+  }
+
+  for (const step of sorted) {
+    if (step.tipe === "teks" && step.isiTeks) {
+      await reportReply({
+        tenantId: job.tenantId, waNumberId: job.waNumberId, nomor: job.nomor, kontak: job.kontak,
+        pesanAsli: job.pesan, balasan: step.isiTeks, keyakinan, status: "terjawab", kanal: "Iklan",
+      });
+    } else if (step.tipe === "gambar" && step.urlGambar) {
+      await reportReply({
+        tenantId: job.tenantId, waNumberId: job.waNumberId, nomor: job.nomor, kontak: job.kontak,
+        pesanAsli: job.pesan,
+        balasan: step.namaGambar ? `[Gambar: ${step.namaGambar}]` : "[Gambar]",
+        mediaUrl: step.urlGambar,
+        mediaType: "image",
+        keyakinan, status: "terjawab", kanal: "Iklan",
+      });
+    } else if (step.tipe === "video" && step.urlGambar) {
+      await reportReply({
+        tenantId: job.tenantId, waNumberId: job.waNumberId, nomor: job.nomor, kontak: job.kontak,
+        pesanAsli: job.pesan,
+        balasan: step.namaGambar ? `[Video: ${step.namaGambar}]` : "[Video]",
+        mediaUrl: step.urlGambar,
+        mediaType: "video",
+        keyakinan, status: "terjawab", kanal: "Iklan",
+      });
+    }
+  }
 }
 
 async function bumpDipakai(id: string, dipakai: number): Promise<void> {

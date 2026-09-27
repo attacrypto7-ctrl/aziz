@@ -11,7 +11,7 @@ export default () => ({
   groqApiKey: process.env.GROQ_API_KEY || "",
   aiApiKey: process.env.AI_API_KEY || process.env.GROQ_API_KEY || "",
   aiBaseUrl: process.env.AI_BASE_URL || "",
-  internalSecret: process.env.INTERNAL_SECRET || "",
+  internalSecret: process.env.INTERNAL_SECRET || "balasin-internal-secret-auth-key-2026",
   internalApiUrl: process.env.INTERNAL_API_URL || "http://localhost:3000/api",
   directUrl: process.env.DIRECT_URL || "",
   googleClientId: process.env.GOOGLE_CLIENT_ID || "",

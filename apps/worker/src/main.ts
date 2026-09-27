@@ -51,12 +51,10 @@ async function main() {
     );
   };
   const connection = new IORedis(redisUrl, {
-    host: "127.0.0.1",
-    family: 4,
     maxRetriesPerRequest: null,
     enableOfflineQueue: false,
     retryStrategy: () => {
-      throttledWarn("[worker] Redis offline (127.0.0.1) - retrying in 30s...");
+      throttledWarn("[worker] Redis offline - retrying in 30s...");
       return 30000;
     },
     reconnectOnError: () => false,
@@ -65,12 +63,12 @@ async function main() {
   });
   connection.on("error", (err) => {
     if (isConnRefused(err)) {
-      throttledWarn("[worker] Redis connection failed (127.0.0.1:6379) - retrying in 30s...");
+      throttledWarn("[worker] Redis connection failed - retrying in 30s...");
       return;
     }
     throttledWarn(`[worker] Redis error: ${(err as Error).message}`);
   });
-  connection.on("close", () => throttledWarn("[worker] Redis connection failed (127.0.0.1:6379) - retrying in 30s..."));
+  connection.on("close", () => throttledWarn("[worker] Redis connection failed - retrying in 30s..."));
   connection.on("connect", () => console.log("[worker] redis connecting..."));
   connection.on("ready", () => console.log("[worker] redis ready"));
 

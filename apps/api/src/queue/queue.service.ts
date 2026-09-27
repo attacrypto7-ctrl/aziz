@@ -63,12 +63,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     try {
       this.connection = new IORedis(this.redisUrl, {
-        host: "127.0.0.1",
-        family: 4,
         maxRetriesPerRequest: null,
         enableOfflineQueue: false,
         retryStrategy: () => {
-          this.throttledWarn("[Redis] Connection failed (127.0.0.1) - retrying in 30s...");
+          this.throttledWarn("[Redis] Connection failed - retrying in 30s...");
           return 30000;
         },
         reconnectOnError: () => false,
@@ -77,12 +75,12 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       });
       this.connection.on("error", (err) => {
         if (this.isSilentRedisError(err)) {
-          this.throttledWarn("[Redis] Connection failed (127.0.0.1) - retrying in 30s...");
+          this.throttledWarn("[Redis] Connection failed - retrying in 30s...");
           return;
         }
         this.throttledWarn(`[Redis] error: ${(err as Error).message}`);
       });
-      this.connection.on("close", () => this.throttledWarn("[Redis] Connection failed (127.0.0.1) - retrying in 30s..."));
+      this.connection.on("close", () => this.throttledWarn("[Redis] Connection failed - retrying in 30s..."));
       const opts = { connection: this.connection };
 
       this.chatQueue = new Queue("chat", opts);

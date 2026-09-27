@@ -71,12 +71,10 @@ async function main() {
   // Konsumsi balasan dari worker → kirim ke WhatsApp
   const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
   const connection = new IORedis(redisUrl, {
-    host: "127.0.0.1",
-    family: 4,
     maxRetriesPerRequest: null,
     enableOfflineQueue: false,
     retryStrategy: () => {
-      throttledWarn("[wa-gateway] Redis offline (127.0.0.1) - retrying in 30s...");
+      throttledWarn("[wa-gateway] Redis offline - retrying in 30s...");
       return 30000;
     },
     reconnectOnError: () => false,
@@ -85,7 +83,7 @@ async function main() {
   });
   connection.on("error", (err) => {
     if (isConnRefused(err)) {
-      throttledWarn("[wa-gateway] Redis connection failed (127.0.0.1:6379) - retrying in 30s...");
+      throttledWarn("[wa-gateway] Redis connection failed - retrying in 30s...");
       return;
     }
     throttledWarn(`[wa-gateway] Redis error: ${(err as Error).message}`);

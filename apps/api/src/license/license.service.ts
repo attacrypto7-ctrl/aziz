@@ -47,22 +47,9 @@ export class LicenseService {
       .where(eq(schema.licenses.tenantId, tenant.id))
       .orderBy(desc(schema.licenses.createdAt));
 
-    if (rows.length === 0 && tenant.lisensiBerakhir) {
-      const isExpired = tenant.lisensiBerakhir.getTime() < Date.now();
-      return [
-        {
-          id: `lic-tenant-${tenant.id}`,
-          kode: "LISENSI-AKTIF",
-          tenantId: tenant.id,
-          tenantNama: tenant.nama,
-          plan: tenant.plan,
-          status: isExpired ? "expired" : (tenant.status === "aktif" ? "aktif" : "nonaktif"),
-          dibuat: tenant.createdAt ? tenant.createdAt.toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-          berakhir: tenant.lisensiBerakhir.toISOString().split("T")[0],
-          kuotaChat: tenant.kuotaChat ?? 999999,
-        },
-      ];
-    }
+    // Jika tidak ada lisensi di database, kembalikan array kosong.
+    // Lisensi hanya bisa aktif melalui kode resmi dari Admin.
+    if (rows.length === 0) return [];
 
     return rows.map((l) => ({
       id: l.id,
@@ -96,12 +83,13 @@ export class LicenseService {
       };
     }
 
-    const isExpired = !tenant.lisensiBerakhir || tenant.lisensiBerakhir.getTime() < Date.now();
-    const isActive = tenant.status === "aktif" && !isExpired;
     const lastLicense = await this.db.db.query.licenses.findFirst({
       where: eq(schema.licenses.tenantId, tenant.id),
       orderBy: desc(schema.licenses.createdAt),
     });
+
+    const isExpired = !tenant.lisensiBerakhir || tenant.lisensiBerakhir.getTime() < Date.now();
+    const isActive = tenant.status === "aktif" && !isExpired && !!lastLicense;
 
     return {
       plan: tenant.plan,

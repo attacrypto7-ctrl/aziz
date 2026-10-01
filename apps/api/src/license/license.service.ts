@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { DatabaseService, schema } from "../database/database.service";
 import { AuthService } from "../auth/auth.service";
 
@@ -83,22 +83,59 @@ export class LicenseService {
       };
     }
 
-    const lastLicense = await this.db.db.query.licenses.findFirst({
-      where: eq(schema.licenses.tenantId, tenant.id),
-      orderBy: desc(schema.licenses.createdAt),
+    // Lisensi hanya sah dan aktif jika ada record resmi di tabel licenses (dibuat oleh Admin).
+    // Tanpa kode lisensi resmi dari Admin, status akun tetap "belum_aktif".
+    const activeLicense = await this.db.db.query.licenses.findFirst({
+      where: and(
+        eq(schema.licenses.tenantId, tenant.id),
+        eq(schema.licenses.status, "aktif"),
+      ),
+      orderBy: desc(schema.licenses.berakhir),
     });
 
-    const isExpired = !tenant.lisensiBerakhir || tenant.lisensiBerakhir.getTime() < Date.now();
-    const isActive = tenant.status === "aktif" && !isExpired && !!lastLicense;
+    if (!activeLicense) {
+      // Cek apakah ada riwayat lisensi yang revoked / expired
+      const lastLicense = await this.db.db.query.licenses.findFirst({
+        where: eq(schema.licenses.tenantId, tenant.id),
+        orderBy: desc(schema.licenses.createdAt),
+      });
+
+      if (lastLicense) {
+        const isPast = lastLicense.berakhir.getTime() < Date.now();
+        return {
+          plan: lastLicense.plan,
+          status: lastLicense.status === "revoked" ? "revoked" : (isPast ? "expired" : "belum_aktif"),
+          totalChatDibalas: tenant.chatBulanIni ?? 0,
+          chatBulanIni: tenant.chatBulanIni ?? 0,
+          lisensiBerakhir: lastLicense.berakhir.toISOString(),
+          isActive: false,
+          kode: lastLicense.kode,
+        };
+      }
+
+      // User sama sekali belum memiliki lisensi resmi dari Admin
+      return {
+        plan: "Starter",
+        status: "belum_aktif",
+        totalChatDibalas: tenant.chatBulanIni ?? 0,
+        chatBulanIni: tenant.chatBulanIni ?? 0,
+        lisensiBerakhir: null,
+        isActive: false,
+        kode: null,
+      };
+    }
+
+    const isExpired = activeLicense.berakhir.getTime() < Date.now();
+    const isActive = !isExpired && tenant.status === "aktif";
 
     return {
-      plan: tenant.plan,
-      status: isActive ? "aktif" : (tenant.lisensiBerakhir ? "expired" : "belum_aktif"),
+      plan: activeLicense.plan,
+      status: isActive ? "aktif" : "expired",
       totalChatDibalas: tenant.chatBulanIni ?? 0,
       chatBulanIni: tenant.chatBulanIni ?? 0,
-      lisensiBerakhir: tenant.lisensiBerakhir?.toISOString() ?? null,
+      lisensiBerakhir: activeLicense.berakhir.toISOString(),
       isActive,
-      kode: lastLicense?.kode ?? null,
+      kode: activeLicense.kode,
     };
   }
 }
